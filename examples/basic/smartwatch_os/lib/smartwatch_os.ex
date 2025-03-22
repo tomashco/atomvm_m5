@@ -62,18 +62,7 @@ defmodule Smartwatch do
     text_size = max(1, text_size0)
     :m5_display.set_text_size(text_size)
 
-    # Display initial information
-    :m5_display.start_write()
-    name = Atom.to_string(:m5.get_board())
-    :m5_display.print("Core:")
-    :m5_display.println(name)
-
-    imu_name = Atom.to_string(:m5_imu.get_type())
-    :m5_display.print("IMU:")
-    :m5_display.println(imu_name)
-    :m5_display.end_write()
-
-    # Start main screen
+    show_initial_information()
 
     screen(%{second: get_new_sec(:second), battery: nil, x_pos_previous: [0, 0, 0, 0, 0, 0]}, 1)
   end
@@ -85,104 +74,23 @@ defmodule Smartwatch do
     end
   end
 
-  defp screen(%{second: second, battery: battery, x_pos_previous: x_pos_previous} = state, screen = 1) do
+  defp screen(
+         %{second: second, battery: battery, x_pos_previous: x_pos_previous} = state,
+         screen = 1
+       ) do
     # Update M5Stack state
     # Process.sleep(10)
     :m5.update()
 
     manage_buttons(state, screen)
 
-    # Display button states
-    :m5_display.start_write()
-    display_button_state(:m5_btn_pwr, "pwr", 2, 783.991)
-    display_button_state(:m5_btn_a, "a", 3, 523.251)
-    display_button_state(:m5_btn_b, "b", 4, 587.330)
-    display_button_state(:m5_btn_c, "c", 5, 659.255)
-    display_button_state(:m5_btn_ext, "ext", 6, 698.456)
-    :m5_display.end_write()
-
     new_sec = get_new_sec(:second)
 
-    {new_battery, new_x_pos_previous} =
-      if new_sec == second do
-        {battery, x_pos_previous}
-      else
-        # Update battery level
-        new_battery = :m5_power.get_battery_level()
-
-        :m5_display.start_write()
-        :m5_display.set_cursor(0, :m5_display.font_height() * 3)
-        :m5_display.print("screen:")
-        :m5_display.print(Integer.to_string(screen))
-        :m5_display.end_write()
-
-        if new_battery != battery do
-          :m5_display.start_write()
-          :m5_display.set_cursor(0, :m5_display.font_height() * 4)
-          :m5_display.print("Bat:")
-
-          if new_battery >= 0 do
-            :m5_display.print(Integer.to_string(new_battery))
-          else
-            :m5_display.print("none")
-          end
-
-          :m5_display.end_write()
-        end
-
-        # Update RTC display
-        if :m5_rtc.is_enabled() do
-          {{year, month, day}, {hour, min, sec}} = :m5_rtc.get_datetime()
-          :m5_display.start_write()
-          IO.puts("Date: #{year}/#{month}/#{day}")
-
-          :m5_display.draw_string(
-            "#{year}/#{month}/#{day}",
-            div(:m5_display.width(), 2),
-            0
-          )
-
-          IO.puts("Time: #{hour}:#{min}:#{sec}")
-
-          :m5_display.draw_string(
-            "#{hour}:#{min}:#{sec}",
-            div(:m5_display.width(), 2),
-            :m5_display.font_height()
-          )
-
-          :m5_display.end_write()
-        end
-
-        # Update IMU display
-        new_x_pos_previous =
-          if :m5_imu.is_enabled() do
-            h = div(:m5_display.height(), 8)
-            {_updated_a, {ax, ay, az}} = :m5_imu.get_accel()
-            {_updated_g, {gx, gy, gz}} = :m5_imu.get_gyro()
-
-            x_pos = [
-              floor(ax * 50),
-              floor(ay * 50),
-              floor(az * 50),
-              floor(gx / 2),
-              floor(gy / 2),
-              floor(gz / 2)
-            ]
-
-            :m5_display.start_write()
-            :m5_display.set_clip_rect(h, h, :m5_display.width(), :m5_display.height())
-            :m5_display.wait_display()
-            colors = [@tft_red, @tft_green, @tft_blue, @tft_red, @tft_green, @tft_blue]
-            display_imu(x_pos, x_pos_previous, colors, 0)
-            :m5_display.clear_clip_rect()
-            :m5_display.end_write()
-            x_pos
-          else
-            x_pos_previous
-          end
-
-        {new_battery, new_x_pos_previous}
-      end
+    show_initial_information()
+    show_screen_state(screen)
+    new_battery = show_battery_state(second, battery)
+    show_rtc_state()
+    new_x_pos_previous = show_imu_state(x_pos_previous)
 
     screen(%{second: new_sec, battery: new_battery, x_pos_previous: new_x_pos_previous}, 1)
   end
@@ -203,6 +111,122 @@ defmodule Smartwatch do
     screen(state, 2)
   end
 
+  defp show_initial_information() do
+    # Display initial information
+    :m5_display.start_write()
+    name = Atom.to_string(:m5.get_board())
+    :m5_display.set_cursor(0, :m5_display.font_height())
+    :m5_display.print("Core:")
+    :m5_display.println(name)
+
+    imu_name = Atom.to_string(:m5_imu.get_type())
+    :m5_display.print("IMU:")
+    :m5_display.println(imu_name)
+    :m5_display.end_write()
+
+    # Start main screen
+  end
+
+  defp show_button_state() do
+    # Display button states
+    :m5_display.start_write()
+    display_button_state(:m5_btn_pwr, "pwr", 2, 783.991)
+    display_button_state(:m5_btn_a, "a", 3, 523.251)
+    display_button_state(:m5_btn_b, "b", 4, 587.330)
+    display_button_state(:m5_btn_c, "c", 5, 659.255)
+    display_button_state(:m5_btn_ext, "ext", 6, 698.456)
+    :m5_display.end_write()
+  end
+
+  defp show_screen_state(screen) do
+    :m5_display.start_write()
+    :m5_display.set_cursor(0, :m5_display.font_height() * 3)
+    :m5_display.print("screen:")
+    :m5_display.print(Integer.to_string(screen))
+    :m5_display.end_write()
+  end
+
+  defp show_rtc_state() do
+    # Update RTC display
+    if :m5_rtc.is_enabled() do
+      {{year, month, day}, {hour, min, sec}} = :m5_rtc.get_datetime()
+      :m5_display.start_write()
+      IO.puts("Date: #{year}/#{month}/#{day}")
+
+      :m5_display.draw_string(
+        "#{year}/#{month}/#{day}",
+        div(:m5_display.width(), 2),
+        0
+      )
+
+      IO.puts("Time: #{hour}:#{min}:#{sec}")
+
+      :m5_display.draw_string(
+        "#{hour}:#{min}:#{sec}",
+        div(:m5_display.width(), 2),
+        :m5_display.font_height()
+      )
+
+      :m5_display.end_write()
+    end
+  end
+
+  defp show_imu_state(x_pos_previous) do
+    # Update IMU display
+    new_x_pos_previous =
+      if :m5_imu.is_enabled() do
+        h = div(:m5_display.height(), 8)
+        {_updated_a, {ax, ay, az}} = :m5_imu.get_accel()
+        {_updated_g, {gx, gy, gz}} = :m5_imu.get_gyro()
+
+        x_pos = [
+          floor(ax * 50),
+          floor(ay * 50),
+          floor(az * 50),
+          floor(gx / 2),
+          floor(gy / 2),
+          floor(gz / 2)
+        ]
+
+        :m5_display.start_write()
+        :m5_display.set_clip_rect(h, h, :m5_display.width(), :m5_display.height())
+        :m5_display.wait_display()
+        colors = [@tft_red, @tft_green, @tft_blue, @tft_red, @tft_green, @tft_blue]
+        display_imu(x_pos, x_pos_previous, colors, 0)
+        :m5_display.clear_clip_rect()
+        :m5_display.end_write()
+        x_pos
+      else
+        x_pos_previous
+      end
+  end
+
+  defp show_battery_state(second, battery) do
+    new_sec = get_new_sec(:second)
+
+    new_battery =
+      if new_sec == second do
+        battery
+      else
+        # Update battery level
+        new_battery = :m5_power.get_battery_level()
+
+        :m5_display.start_write()
+        :m5_display.set_cursor(0, :m5_display.font_height() * 4)
+        :m5_display.print("Bat:")
+
+        if new_battery >= 0 do
+          :m5_display.print(Integer.to_string(new_battery))
+        else
+          :m5_display.print("none")
+        end
+
+        :m5_display.end_write()
+
+        new_battery
+      end
+  end
+
   defp manage_buttons(state, screen) do
     # if :m5_btn_a.was_pressed(), do: :m5_display.sleep()
     # if :m5_btn_a.was_released(), do: :m5_display.wakeup()
@@ -212,13 +236,12 @@ defmodule Smartwatch do
   end
 
   defp change_display(state, screen) do
-
     if screen === 1 do
       :m5_display.fill_screen(@tft_gray)
       screen(state, 2)
     else
       :m5_display.clear()
-      screen(state, 1)
+      screen(%{state | x_pos_previous: [0, 0, 0, 0, 0, 0]}, 1)
     end
   end
 
